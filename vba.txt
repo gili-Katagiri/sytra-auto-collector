@@ -1,0 +1,120 @@
+Sub read_csv()
+    Dim varFileName As Variant
+    Dim intFree As Integer
+    Dim strRec As String
+    Dim strSplit As String
+    Dim i As Long, j As Long, k As Long
+    Dim lngQuote As Long
+    Dim strCell As String
+    
+    'ダイアログをもちいて、ファイル名の選択　返り値はフルパス
+    '基本的には文字列でよい　[キャンセル]の選択などでFalseが返るためVariant
+    'varFileName = Application.GetOpenFilename(FileFilter:="CSVファイル(*.csv),*.csv", Title:="CSVファイルの選択")
+    varFileName = ThisWorkbook.Path & "\summary.csv"
+    '文字列方であっても（暗黙）型変換により、判定可能　例: if varFileName <> False
+    If varFileName = False Then
+        Exit Sub
+    End If
+    
+    intFree = FreeFile '空番号の取得　空番号はファイルの識別番号といった感じ
+    Open varFileName For Input As #intFree 'ファイルオープン
+    
+    i = 0
+    Do Until EOF(intFree)
+        Line Input #intFree, strRec
+        i = i + 1
+        j = 0
+        lngQuote = 0 '[,]から[,]で["]が何度出てきたか
+        strCell = ""
+        For k = 1 To Len(strRec) 'itr kとして文字を取得したい
+            Select Case Mid(strRec, k, 1) 'MidはstrRecのk番目から長さ1取り出す
+                Case "," '","ならセルが確定 "するかもしれない" [ 例外: "," ]
+                    If lngQuote Mod 2 = 0 Then '
+                        Call putcell(i, j, strCell, lngQuote)
+                    Else
+                        strCell = strCell & Mid(strRec, k, 1) 'ただの文字として扱う
+                    End If
+                Case """" 'UNIXライクに書くと "\""
+                    lngQuote = lngQuote + 1
+                    strCell = strCell & Mid(strRec, k, 1)
+                Case Else
+                    strCell = strCell & Mid(strRec, k, 1)
+            End Select
+            
+        Next
+        Call putcell(i, j, strCell, lngQuote)
+    Loop
+    Close #intfile '指定しなければすべて閉じる
+    
+End Sub
+
+'ByRefは参照渡し、ByValは値渡し　指定がなければByRef
+Sub putcell(ByRef i As Long, ByRef j As Long, ByRef strCell As String, ByRef lngQuote As Long)
+    j = j + 1
+    If strCell <> """""" Then ' ,"",
+        strCell = Replace(strCell, """""", """") ' \"\" -> \"
+    End If
+    
+    'Leftは先頭から、Rightは後尾から長さだけ取得
+    If Left(strCell, 1) = """" And Right(strCell, 1) = """" Then
+        strCell = Mid(strCell, 2, Len(strCell) - 2)
+    End If
+    Cells(i, j) = strCell
+    ' reset
+    strCell = ""
+    lngQuote = 0
+End Sub
+
+Sub save_csv()
+    Dim sht As Worksheet
+    Dim varFileName As Variant
+    Dim intFree As Long
+    Dim i As Long
+    
+    varFileName = ThisWorkbook.Path & "\summary.csv"
+    
+    Set sht = ActiveSheet
+    
+    intFree = FreeFile
+    Open varFileName For Output As #intFree 'ファイルオープン
+    
+    Print #intFree, Format(Cells(1, 1), "yyyy-mm-dd")
+    For i = 2 To Cells(1.1).End(xlDown).Row
+        Print #intFree, CSV_EditRec(sht, i)
+    Next
+    
+    Close #intFree
+    
+    For i = 1 To Cells(1.1).End(xlDown).Row
+        For j = 1 To 11
+            Cells(i, j).Clear
+        Next
+    Next
+    
+    ActiveWorkbook.Save
+    
+End Sub
+
+Private Function CSV_EditRec(ByVal sht As Worksheet, ByVal i As Long) As String
+    Dim strRec As String
+    Dim strCol As String
+    Dim j As Long
+
+    strRec = ""
+    For j = 1 To 11
+        Select Case True
+            Case IsNumeric(Cells(i, j))
+                strCol = CStr(CDbl(Cells(i, j)))
+            Case Else
+                strCol = CStr(Cells(i, j))
+        End Select
+        
+        If strRec = "" Then
+            strRec = strCol
+        Else
+            strRec = strRec & "," & strCol
+        End If
+        
+    Next
+    CSV_EditRec = strRec
+End Function
